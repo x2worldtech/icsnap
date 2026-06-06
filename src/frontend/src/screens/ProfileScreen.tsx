@@ -3,12 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Edit2, LogOut, X } from "lucide-react";
+import { Check, Copy, Pencil, ShieldCheck, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   RetentionPolicy,
   useGetCallerUserProfile,
@@ -17,7 +17,7 @@ import {
 } from "../hooks/useQueries";
 
 export default function ProfileScreen() {
-  const { clear } = useInternetIdentity();
+  const { identity, clear } = useInternetIdentity();
   const queryClient = useQueryClient();
   const { data: profile, isLoading } = useGetCallerUserProfile();
   const updateRetention = useUpdateRetention();
@@ -26,6 +26,7 @@ export default function ProfileScreen() {
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
 
+  const principal = identity?.getPrincipal().toString() ?? "";
   const isForever = profile?.retention === RetentionPolicy.forever;
 
   const handleRetentionToggle = async (checked: boolean) => {
@@ -36,11 +37,11 @@ export default function ProfileScreen() {
       await updateRetention.mutateAsync(policy);
       toast.success(
         checked
-          ? "Nachrichten werden dauerhaft gespeichert"
-          : "Nachrichten werden nach 24h gelöscht",
+          ? "Messages are now kept forever"
+          : "Messages will be deleted after 24 hours",
       );
     } catch {
-      toast.error("Einstellung konnte nicht gespeichert werden");
+      toast.error("Couldn't save setting");
     }
   };
 
@@ -57,9 +58,19 @@ export default function ProfileScreen() {
         retention: profile.retention,
       });
       setEditingUsername(false);
-      toast.success("Nutzername aktualisiert");
+      toast.success("Username updated");
     } catch {
-      toast.error("Fehler beim Speichern");
+      toast.error("Couldn't save");
+    }
+  };
+
+  const handleCopyPrincipal = async () => {
+    if (!principal) return;
+    try {
+      await navigator.clipboard.writeText(principal);
+      toast.success("Principal ID copied");
+    } catch {
+      toast.error("Couldn't copy");
     }
   };
 
@@ -73,18 +84,20 @@ export default function ProfileScreen() {
 
   return (
     <div className="h-full flex flex-col bg-background">
-      <header className="px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-bold text-foreground">Profil</h1>
+      <header className="px-5 pt-14 pb-2">
+        <h1 className="text-[1.75rem] font-extrabold tracking-tight text-foreground">
+          Profile
+        </h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-24 flex flex-col gap-4">
-        {/* Avatar + username */}
+      <div className="flex-1 overflow-y-auto px-4 pb-28 flex flex-col gap-6">
+        {/* Identity */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center gap-4 py-6"
+          className="flex flex-col items-center gap-4 pt-6 pb-2"
         >
-          <Avatar className="w-24 h-24 purple-glow">
+          <Avatar className="w-24 h-24 brand-glow">
             <AvatarFallback className="gradient-avatar text-white text-3xl font-bold">
               {initials || "?"}
             </AvatarFallback>
@@ -97,7 +110,7 @@ export default function ProfileScreen() {
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSaveUsername()}
-                className="flex-1 text-center bg-card border-border text-foreground"
+                className="flex-1 text-center bg-card border-border text-foreground rounded-xl"
                 autoFocus
               />
               <button
@@ -105,87 +118,103 @@ export default function ProfileScreen() {
                 data-ocid="profile.save_button"
                 onClick={handleSaveUsername}
                 disabled={saveProfile.isPending}
-                className="w-9 h-9 rounded-full flex items-center justify-center"
-                style={{ background: "oklch(0.55 0.22 293)" }}
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-primary text-primary-foreground shrink-0"
               >
-                <Check className="w-4 h-4 text-white" />
+                <Check className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 data-ocid="profile.cancel_button"
                 onClick={() => setEditingUsername(false)}
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-muted"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-secondary shrink-0"
               >
                 <X className="w-4 h-4 text-foreground" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xl font-bold text-foreground">
-                {username || "Kein Name"}
+            <button
+              type="button"
+              data-ocid="profile.edit_button"
+              onClick={handleEditUsername}
+              className="flex items-center gap-2 group"
+            >
+              <span className="text-2xl font-bold text-foreground">
+                {username || "Set a username"}
               </span>
-              <button
-                type="button"
-                data-ocid="profile.edit_button"
-                onClick={handleEditUsername}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-card"
-              >
-                <Edit2 className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
+              <Pencil className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            </button>
           )}
         </motion.div>
 
-        {/* Settings card */}
-        <div className="bg-card rounded-2xl border border-border p-4 flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Datenschutz
-          </h2>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col gap-0.5">
-              <Label className="text-foreground font-medium">
-                Nachrichten behalten
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {isForever
-                  ? "Deine Nachrichten werden dauerhaft gespeichert"
-                  : "Deine Nachrichten werden nach 24h gelöscht"}
-              </p>
-            </div>
-            <Switch
-              data-ocid="profile.switch"
-              checked={isForever}
-              onCheckedChange={handleRetentionToggle}
-              disabled={updateRetention.isPending || isLoading}
-            />
+        {/* Privacy */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 px-1">
+            <ShieldCheck className="w-4 h-4 text-primary" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Privacy
+            </h2>
           </div>
-        </div>
+          <div className="bg-card rounded-2xl border border-border p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-0.5">
+                <Label className="text-foreground font-medium">
+                  Keep messages forever
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {isForever
+                    ? "Messages are stored permanently"
+                    : "Messages are deleted after 24 hours"}
+                </p>
+              </div>
+              <Switch
+                data-ocid="profile.switch"
+                checked={isForever}
+                onCheckedChange={handleRetentionToggle}
+                disabled={updateRetention.isPending || isLoading}
+              />
+            </div>
+          </div>
+        </section>
 
-        {/* Principal ID */}
-        <div className="bg-card rounded-2xl border border-border p-4">
-          <h2 className="text-sm font-semibold text-muted-foreground mb-2">
-            Deine Principal ID
-          </h2>
-          <p className="text-xs text-foreground/60 font-mono break-all">
-            Zur Anzeige einloggen und im Chat-Header nachsehen
-          </p>
-        </div>
+        {/* Account */}
+        <section className="flex flex-col gap-3">
+          <div className="px-1">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Account
+            </h2>
+          </div>
+          <div className="bg-card rounded-2xl border border-border p-4 flex flex-col gap-3">
+            <span className="text-sm font-medium text-foreground">
+              Principal ID
+            </span>
+            <div className="flex items-center gap-3">
+              <code className="flex-1 min-w-0 text-xs font-mono text-muted-foreground break-all leading-relaxed">
+                {principal || "—"}
+              </code>
+              <button
+                type="button"
+                onClick={handleCopyPrincipal}
+                className="w-9 h-9 rounded-lg flex items-center justify-center bg-secondary hover:bg-muted transition-colors shrink-0"
+                aria-label="Copy Principal ID"
+              >
+                <Copy className="w-4 h-4 text-foreground" />
+              </button>
+            </div>
+          </div>
+        </section>
 
-        {/* Logout */}
+        {/* Sign out */}
         <Button
           data-ocid="profile.delete_button"
-          variant="outline"
+          variant="ghost"
           onClick={handleLogout}
-          className="w-full rounded-2xl border-destructive text-destructive hover:bg-destructive/10 mt-2"
+          className="w-full h-12 rounded-2xl text-destructive hover:bg-destructive/10 hover:text-destructive font-medium"
         >
-          <LogOut className="w-4 h-4 mr-2" />
-          Abmelden
+          Sign out
         </Button>
 
-        {/* Footer */}
-        <p className="text-xs text-muted-foreground text-center pt-4">
-          © {new Date().getFullYear()}. Gebaut mit ❤️ via{" "}
+        <p className="text-[0.6875rem] text-muted-foreground/70 text-center pt-1">
+          © {new Date().getFullYear()} ICSnap · Built on{" "}
           <a
             href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
             target="_blank"

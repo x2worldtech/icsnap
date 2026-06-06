@@ -59,6 +59,7 @@ export enum Variant_pending_rejected_accepted {
 export interface backendInterface {
     acceptContactRequest(from: UserId): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    findUserByUsername(username: string): Promise<[UserProfile, UserId] | null>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getConversationHistory(otherUser: UserId): Promise<Array<Message>>;

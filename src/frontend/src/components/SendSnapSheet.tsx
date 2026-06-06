@@ -6,14 +6,15 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useActor } from "@caffeineai/core-infrastructure";
 import { Principal } from "@icp-sdk/core/principal";
 import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { UserProfile } from "../backend.d";
-import { Variant_pending_rejected_accepted } from "../backend.d";
-import { useActor } from "../hooks/useActor";
+import { createActor } from "../backend";
+import type { UserProfile } from "../backend";
+import { Variant_pending_rejected_accepted } from "../backend";
 import { useListContacts, useSendSnap } from "../hooks/useQueries";
 
 interface SendSnapSheetProps {
@@ -30,7 +31,7 @@ export default function SendSnapSheet({
   onSent,
 }: SendSnapSheetProps) {
   const { data: contacts } = useListContacts();
-  const { actor } = useActor();
+  const { actor } = useActor(createActor);
   const sendSnap = useSendSnap();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
@@ -77,7 +78,7 @@ export default function SendSnapSheet({
     // Optimistic: close immediately so the user doesn't notice the backend latency
     const receivers = Array.from(selected);
     toast.success(
-      `Snap an ${receivers.length} Kontakt${receivers.length > 1 ? "e" : ""} gesendet!`,
+      `Snap sent to ${receivers.length} contact${receivers.length > 1 ? "s" : ""}!`,
     );
     onSent(); // dismiss UI right away
 
@@ -87,7 +88,7 @@ export default function SendSnapSheet({
         sendSnap.mutateAsync({ receiver, bytes: snapBytes }),
       ),
     ).catch(() => {
-      toast.error("Snap konnte nicht gesendet werden");
+      toast.error("Couldn't send snap");
     });
   };
 
@@ -99,13 +100,13 @@ export default function SendSnapSheet({
         style={{ maxHeight: "70vh" }}
       >
         <SheetHeader>
-          <SheetTitle className="text-foreground">Snap senden an...</SheetTitle>
+          <SheetTitle className="text-foreground">Send snap to…</SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-2 py-4 overflow-y-auto">
           {acceptedContacts.length === 0 ? (
             <p className="text-center text-muted-foreground text-sm py-4">
-              Keine Kontakte vorhanden. Füge zuerst Kontakte hinzu.
+              No contacts yet. Add some first.
             </p>
           ) : (
             acceptedContacts.map(([uid], idx) => {
@@ -135,7 +136,7 @@ export default function SendSnapSheet({
                   {isSelected && (
                     <div
                       className="w-6 h-6 rounded-full flex items-center justify-center"
-                      style={{ background: "oklch(0.55 0.22 293)" }}
+                      style={{ background: "oklch(var(--primary))" }}
                     >
                       <Check className="w-3 h-3 text-white" />
                     </div>
@@ -154,11 +155,11 @@ export default function SendSnapSheet({
           style={{
             background:
               selected.size > 0
-                ? "linear-gradient(135deg, oklch(0.55 0.22 293), oklch(0.48 0.2 280))"
+                ? "linear-gradient(135deg, oklch(var(--primary)), oklch(0.50 0.19 258))"
                 : undefined,
           }}
         >
-          {`Senden${selected.size > 0 ? ` (${selected.size})` : ""}`}
+          {`Send${selected.size > 0 ? ` (${selected.size})` : ""}`}
         </Button>
       </SheetContent>
     </Sheet>

@@ -4,10 +4,10 @@ import Text "mo:core/Text";
 import Nat "mo:core/Nat";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
-import MixinAuthorization "authorization/MixinAuthorization";
-import AccessControl "authorization/access-control";
-import Storage "blob-storage/Storage";
-import MixinStorage "blob-storage/Mixin";
+import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
+import AccessControl "mo:caffeineai-authorization/access-control";
+import Storage "mo:caffeineai-object-storage/Storage";
+import MixinObjectStorage "mo:caffeineai-object-storage/Mixin";
 import Time "mo:core/Time";
 import Iter "mo:core/Iter";
 import Order "mo:core/Order";
@@ -16,7 +16,7 @@ import Int "mo:core/Int";
 
 actor {
   // Mixins
-  include MixinStorage();
+  include MixinObjectStorage();
 
   // Authorization
   let accessControlState = AccessControl.initState();
@@ -89,6 +89,9 @@ actor {
   let contactRequests = Map.empty<UserId, List.List<ContactRequest>>();
   let messages = Map.empty<UserId, List.List<Message>>();
   let snaps = Map.empty<Text, Snap>();
+  // Index: receiver -> list of their unopened snap IDs.
+  // Lets listUnopenedSnaps look up a single user's snaps instead of scanning all snaps globally.
+  let unopenedSnapsByReceiver = Map.empty<UserId, List.List<Text>>();
   var nextMessageId = 0;
 
   // Helper: check accepted request in a single user's list
@@ -116,22 +119,26 @@ actor {
     hasAcceptedRequest(user1, user1, user2) or hasAcceptedRequest(user2, user1, user2);
   };
 
-  // Helper function to clean old messages based on retention policy
-  func cleanOldMessages() {
-    let now = Time.now();
-    let twentyFourHours : Int = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
-    
-    for ((userId, msgList) in messages.entries()) {
-      switch (userProfiles.get(userId)) {
-        case (null) {};
-        case (?profile) {
-          if (profile.retention == #deleteAfter24h) {
-            let filteredMessages = msgList.filter(
-              func(msg : Message) : Bool {
-                (now - msg.timestamp) < twentyFourHours
-              }
-            );
-            messages.add(userId, filteredMessages);
+  // Clean a single user's messages according to their own retention policy.
+  // Scoped to one user so it stays O(that user's messages) instead of scanning everyone
+  // on every message send.
+  func cleanMessagesFor(userId : UserId) {
+    switch (userProfiles.get(userId)) {
+      case (null) {};
+      case (?profile) {
+        if (profile.retention == #deleteAfter24h) {
+          switch (messages.get(userId)) {
+            case (null) {};
+            case (?msgList) {
+              let now = Time.now();
+              let twentyFourHours : Int = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
+              let filteredMessages = msgList.filter(
+                func(msg : Message) : Bool {
+                  (now - msg.timestamp) < twentyFourHours
+                }
+              );
+              messages.add(userId, filteredMessages);
+            };
           };
         };
       };
@@ -408,6 +415,13 @@ actor {
       opened = false;
     };
     snaps.add(snapId, snap);
+    // Maintain the per-receiver index for fast unopened-snap lookups
+    let receiverSnaps = switch (unopenedSnapsByReceiver.get(receiver)) {
+      case (null) { List.empty<Text>() };
+      case (?ids) { ids };
+    };
+    receiverSnaps.add(snapId);
+    unopenedSnapsByReceiver.add(receiver, receiverSnaps);
     snapId;
   };
 
@@ -422,6 +436,14 @@ actor {
           Runtime.trap("Unauthorized: Can only open snaps sent to you");
         };
         snaps.remove(snapId);
+        // Keep the per-receiver index in sync
+        switch (unopenedSnapsByReceiver.get(snap.receiver)) {
+          case (null) {};
+          case (?ids) {
+            let remaining = ids.filter(func(id : Text) : Bool { id != snapId });
+            unopenedSnapsByReceiver.add(snap.receiver, remaining);
+          };
+        };
         snap.blobId;
       };
     };
@@ -432,9 +454,19 @@ actor {
       Runtime.trap("Unauthorized: Only authenticated users can list snaps");
     };
     let unopenedSnaps = List.empty<Snap>();
-    for ((_, snap) in snaps.entries()) {
-      if (snap.receiver == caller and not snap.opened) {
-        unopenedSnaps.add(snap);
+    switch (unopenedSnapsByReceiver.get(caller)) {
+      case (null) {};
+      case (?ids) {
+        for (id in ids.toArray().values()) {
+          switch (snaps.get(id)) {
+            case (null) {};
+            case (?snap) {
+              if (not snap.opened) {
+                unopenedSnaps.add(snap);
+              };
+            };
+          };
+        };
       };
     };
     unopenedSnaps.toArray();
@@ -455,8 +487,9 @@ actor {
       Runtime.trap("Can only send messages to contacts");
     };
     
-    cleanOldMessages();
-    
+    cleanMessagesFor(caller);
+    cleanMessagesFor(receiver);
+
     let messageId = nextMessageId;
     nextMessageId += 1;
     let message : Message = {
@@ -509,8 +542,25 @@ actor {
       };
     };
     
+    // Apply the caller's retention policy at read time, so the 24h rule still holds
+    // for the viewer even when no cleanup write has happened recently.
+    let visibleMessages = switch (userProfiles.get(caller)) {
+      case (?profile) {
+        if (profile.retention == #deleteAfter24h) {
+          let now = Time.now();
+          let twentyFourHours : Int = 24 * 60 * 60 * 1_000_000_000;
+          conversationMessages.filter(
+            func(msg : Message) : Bool {
+              (now - msg.timestamp) < twentyFourHours
+            }
+          );
+        } else { conversationMessages };
+      };
+      case (null) { conversationMessages };
+    };
+
     // Sort by timestamp
-    let sortedMessages = conversationMessages.toArray();
+    let sortedMessages = visibleMessages.toArray();
     sortedMessages.sort();
   };
 };

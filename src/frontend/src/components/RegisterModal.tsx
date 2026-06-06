@@ -18,9 +18,9 @@ export default function RegisterModal() {
     if (!username.trim()) return;
     try {
       await register.mutateAsync(username.trim());
-      toast.success("Willkommen bei ICSnap!");
+      toast.success("Welcome to ICSnap!");
     } catch {
-      toast.error("Nutzername bereits vergeben oder ungültig");
+      toast.error("Username already taken or invalid");
     }
   };
 
@@ -34,19 +34,19 @@ export default function RegisterModal() {
       >
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-center">
-            Nutzername wählen
+            Choose a username
           </DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4 pt-2">
           <p className="text-sm text-muted-foreground text-center">
-            Wähle einen Nutzernamen, damit andere dich finden können.
+            Pick a username so others can find you.
           </p>
           <Input
             data-ocid="register.input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            placeholder="z.B. snapstar42"
+            placeholder="e.g. snapstar42"
             className="bg-background border-border text-foreground text-center rounded-xl"
             autoFocus
           />
@@ -54,13 +54,9 @@ export default function RegisterModal() {
             data-ocid="register.submit_button"
             onClick={handleSubmit}
             disabled={!username.trim() || register.isPending}
-            className="w-full rounded-2xl py-5 font-semibold"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.55 0.22 293), oklch(0.48 0.2 280))",
-            }}
+            className="w-full rounded-2xl py-5 font-semibold bg-primary text-primary-foreground brand-glow hover:opacity-95 transition-opacity"
           >
-            {register.isPending ? "Erstelle Profil..." : "Loslegen 🚀"}
+            {register.isPending ? "Creating profile…" : "Get started"}
           </Button>
         </div>
       </DialogContent>

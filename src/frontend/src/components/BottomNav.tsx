@@ -5,88 +5,91 @@ import type { MainScreen } from "../App";
 interface BottomNavProps {
   active: MainScreen;
   onChange: (screen: MainScreen) => void;
-  onCamera?: () => void;
 }
 
-const NAV_ITEMS: { id: MainScreen; icon: React.ReactNode; label: string }[] = [
-  { id: "chats", icon: <MessageCircle className="w-5 h-5" />, label: "Chats" },
-  { id: "camera", icon: <Camera className="w-6 h-6" />, label: "Kamera" },
-  { id: "contacts", icon: <Users className="w-5 h-5" />, label: "Kontakte" },
-  { id: "profile", icon: <User className="w-5 h-5" />, label: "Profil" },
-];
+const NAV_ITEMS = [
+  { id: "chats", icon: MessageCircle, label: "Chats" },
+  { id: "camera", icon: Camera, label: "Camera" },
+  { id: "contacts", icon: Users, label: "Contacts" },
+  { id: "profile", icon: User, label: "Profile" },
+] as const;
 
 export default function BottomNav({ active, onChange }: BottomNavProps) {
   return (
-    <div className="px-4 pb-2">
+    <nav className="glass border-t border-white/10">
       <div
-        className="flex items-center justify-around rounded-3xl px-2 py-2 backdrop-blur-md"
+        className="flex items-center justify-around px-3 pt-2.5"
         style={{
-          background: "oklch(0.14 0.012 280 / 0.95)",
-          border: "1px solid oklch(0.26 0.018 280)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.625rem)",
         }}
       >
         {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
           const isActive = active === item.id;
           const isCamera = item.id === "camera";
+
+          if (isCamera) {
+            return (
+              <button
+                type="button"
+                key={item.id}
+                data-ocid={`nav.${item.id}.link`}
+                onClick={() => onChange(item.id)}
+                aria-label={item.label}
+                className="flex items-center justify-center"
+              >
+                <div
+                  className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-200 ${
+                    isActive
+                      ? "gradient-avatar brand-glow text-white scale-105"
+                      : "bg-secondary text-muted-foreground active:scale-95"
+                  }`}
+                >
+                  <Icon className="w-6 h-6" />
+                </div>
+              </button>
+            );
+          }
+
           return (
             <button
               type="button"
               key={item.id}
               data-ocid={`nav.${item.id}.link`}
               onClick={() => onChange(item.id)}
-              className="relative flex flex-col items-center justify-center gap-0.5 transition-all"
-              style={{
-                minWidth: isCamera ? 64 : 48,
-                minHeight: isCamera ? 56 : 48,
-              }}
+              aria-label={item.label}
+              className="relative flex min-w-[3.75rem] flex-col items-center gap-1 py-1"
             >
-              {isCamera ? (
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all"
-                  style={{
-                    background: isActive
-                      ? "linear-gradient(135deg, oklch(0.55 0.22 293), oklch(0.48 0.2 280))"
-                      : "oklch(0.19 0.016 280)",
-                    boxShadow: isActive
-                      ? "0 0 20px oklch(0.55 0.22 293 / 0.5)"
-                      : "none",
-                  }}
-                >
-                  <span
-                    style={{ color: isActive ? "white" : "oklch(0.55 0 0)" }}
-                  >
-                    {item.icon}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <span
-                    className="transition-colors"
-                    style={{
-                      color: isActive
-                        ? "oklch(0.55 0.22 293)"
-                        : "oklch(0.55 0 0)",
-                      filter: isActive
-                        ? "drop-shadow(0 0 6px oklch(0.55 0.22 293 / 0.6))"
-                        : "none",
-                    }}
-                  >
-                    {item.icon}
-                  </span>
-                  {isActive && (
-                    <motion.div
-                      layoutId="nav-indicator"
-                      className="w-1 h-1 rounded-full"
-                      style={{ background: "oklch(0.55 0.22 293)" }}
-                    />
-                  )}
-                </>
+              {isActive && (
+                <motion.div
+                  layoutId="nav-indicator"
+                  className="absolute -top-1.5 h-1 w-7 rounded-full bg-primary"
+                />
               )}
+              <Icon
+                className={`w-[1.375rem] h-[1.375rem] transition-colors ${
+                  isActive ? "text-primary" : "text-muted-foreground"
+                }`}
+                style={
+                  isActive
+                    ? {
+                        filter:
+                          "drop-shadow(0 0 8px oklch(var(--primary) / 0.55))",
+                      }
+                    : undefined
+                }
+              />
+              <span
+                className={`text-[0.625rem] font-semibold tracking-wide transition-colors ${
+                  isActive ? "text-primary" : "text-muted-foreground/70"
+                }`}
+              >
+                {item.label}
+              </span>
             </button>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 }

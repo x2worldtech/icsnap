@@ -1,103 +1,294 @@
+import { useActor } from "@caffeineai/core-infrastructure";
 import { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Message, Snap, UserProfile } from "../backend.d";
-import { RetentionPolicy } from "../backend.d";
-import { useActor } from "./useActor";
-import { useInternetIdentity } from "./useInternetIdentity";
+import {
+  createActor,
+  ExternalBlob,
+  RetentionPolicy,
+  Variant_pending_rejected_accepted,
+} from "../backend";
+import type { ContactRequest, Message, Snap, UserId, UserProfile } from "../backend";
 
+// Re-exported so screens can import the enum from a single place.
 export { RetentionPolicy };
 
-export function useGetCallerUserProfile() {
-  const { actor, isFetching: actorFetching } = useActor();
-  const query = useQuery<UserProfile | null>({
-    queryKey: ["currentUserProfile"],
-    queryFn: async () => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.getCallerUserProfile();
-    },
-    enabled: !!actor && !actorFetching,
-    retry: false,
-  });
-  return {
-    ...query,
-    isLoading: actorFetching || query.isLoading,
-    isFetched: !!actor && query.isFetched,
-  };
-}
+// Centralised, stable query keys. Changing a key here changes it everywhere.
+const KEYS = {
+  callerProfile: ["callerUserProfile"] as const,
+  contacts: ["contacts"] as const,
+  pending: ["pendingRequests"] as const,
+  unopenedSnaps: ["unopenedSnaps"] as const,
+  conversation: (principal: string) => ["conversation", principal] as const,
+};
 
-export function useRegister() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (username: string) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.register(username);
+type ContactEntry = [UserId, ContactRequest];
+
+/* ----------------------------- Queries ----------------------------- */
+
+export function useGetCallerUserProfile() {
+  const { actor } = useActor(createActor);
+  return useQuery<UserProfile | null>({
+    queryKey: KEYS.callerProfile,
+    queryFn: async () => {
+      if (!actor) return null;
+      return await actor.getCallerUserProfile();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
-    },
+    enabled: !!actor,
   });
 }
 
 export function useListContacts() {
-  const { actor, isFetching } = useActor();
-  const { identity } = useInternetIdentity();
-  return useQuery({
-    queryKey: ["contacts"],
+  const { actor } = useActor(createActor);
+  return useQuery<ContactEntry[]>({
+    queryKey: KEYS.contacts,
     queryFn: async () => {
       if (!actor) return [];
-      return actor.listContacts();
+      return await actor.listContacts();
     },
-    enabled: !!actor && !isFetching && !!identity,
-    refetchInterval: 10000,
+    enabled: !!actor,
+    refetchInterval: 20000,
   });
 }
 
 export function useListPendingRequests() {
-  const { actor, isFetching } = useActor();
-  const { identity } = useInternetIdentity();
-  return useQuery({
-    queryKey: ["pendingRequests"],
+  const { actor } = useActor(createActor);
+  return useQuery<ContactEntry[]>({
+    queryKey: KEYS.pending,
     queryFn: async () => {
       if (!actor) return [];
-      return actor.listPendingRequests();
+      return await actor.listPendingRequests();
     },
-    enabled: !!actor && !isFetching && !!identity,
-    refetchInterval: 10000,
-  });
-}
-
-export function useConversationHistory(otherUserPrincipal: string | null) {
-  const { actor, isFetching } = useActor();
-  const { identity } = useInternetIdentity();
-  return useQuery<Message[]>({
-    queryKey: ["conversation", otherUserPrincipal],
-    queryFn: async () => {
-      if (!actor || !otherUserPrincipal) return [];
-      const principal = Principal.fromText(otherUserPrincipal);
-      return actor.getConversationHistory(principal);
-    },
-    enabled: !!actor && !isFetching && !!identity && !!otherUserPrincipal,
-    refetchInterval: 5000,
+    enabled: !!actor,
+    refetchInterval: 12000,
   });
 }
 
 export function useListUnopenedSnaps() {
-  const { actor, isFetching } = useActor();
-  const { identity } = useInternetIdentity();
+  const { actor } = useActor(createActor);
   return useQuery<Snap[]>({
-    queryKey: ["unopenedSnaps"],
+    queryKey: KEYS.unopenedSnaps,
     queryFn: async () => {
       if (!actor) return [];
-      return actor.listUnopenedSnaps();
+      return await actor.listUnopenedSnaps();
     },
-    enabled: !!actor && !isFetching && !!identity,
-    refetchInterval: 8000,
+    enabled: !!actor,
+    refetchInterval: 5000,
+  });
+}
+
+export function useConversationHistory(contactPrincipal: string) {
+  const { actor } = useActor(createActor);
+  return useQuery<Message[]>({
+    queryKey: KEYS.conversation(contactPrincipal),
+    queryFn: async () => {
+      if (!actor) return [];
+      return await actor.getConversationHistory(
+        Principal.fromText(contactPrincipal),
+      );
+    },
+    enabled: !!actor && !!contactPrincipal,
+    refetchInterval: 3000,
+  });
+}
+
+/* ---------------------------- Mutations ---------------------------- */
+
+export function useRegister() {
+  const { actor } = useActor(createActor);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (username: string) => {
+      if (!actor) throw new Error("Actor not available");
+      return await actor.register(username);
+    },
+    onMutate: async (username: string) => {
+      await queryClient.cancelQueries({ queryKey: KEYS.callerProfile });
+      const previous = queryClient.getQueryData<UserProfile | null>(
+        KEYS.callerProfile,
+      );
+      queryClient.setQueryData<UserProfile | null>(KEYS.callerProfile, {
+        username,
+        retention: RetentionPolicy.forever,
+      });
+      return { previous };
+    },
+    onError: (_error, _username, context) => {
+      if (context) {
+        queryClient.setQueryData(KEYS.callerProfile, context.previous ?? null);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.callerProfile });
+    },
+  });
+}
+
+export function useSendContactRequest() {
+  const { actor } = useActor(createActor);
+  return useMutation({
+    mutationFn: async (to: string) => {
+      if (!actor) throw new Error("Actor not available");
+      return await actor.sendContactRequest(Principal.fromText(to));
+    },
+  });
+}
+
+export function useAcceptContactRequest() {
+  const { actor } = useActor(createActor);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (from: string) => {
+      if (!actor) throw new Error("Actor not available");
+      return await actor.acceptContactRequest(Principal.fromText(from));
+    },
+    onMutate: async (from: string) => {
+      await queryClient.cancelQueries({ queryKey: KEYS.pending });
+      await queryClient.cancelQueries({ queryKey: KEYS.contacts });
+      const prevPending = queryClient.getQueryData<ContactEntry[]>(KEYS.pending);
+      const prevContacts =
+        queryClient.getQueryData<ContactEntry[]>(KEYS.contacts);
+
+      if (prevPending) {
+        queryClient.setQueryData<ContactEntry[]>(
+          KEYS.pending,
+          prevPending.filter(([uid]) => uid.toString() !== from),
+        );
+      }
+
+      const fromPrincipal = Principal.fromText(from);
+      const accepted: ContactRequest = {
+        from: fromPrincipal,
+        to: fromPrincipal,
+        status: Variant_pending_rejected_accepted.accepted,
+      };
+      const base = prevContacts ?? [];
+      const alreadyThere = base.some(([uid]) => uid.toString() === from);
+      queryClient.setQueryData<ContactEntry[]>(
+        KEYS.contacts,
+        alreadyThere
+          ? base
+          : [...base, [fromPrincipal, accepted] as ContactEntry],
+      );
+
+      return { prevPending, prevContacts };
+    },
+    onError: (_error, _from, context) => {
+      if (context?.prevPending !== undefined) {
+        queryClient.setQueryData(KEYS.pending, context.prevPending);
+      }
+      if (context?.prevContacts !== undefined) {
+        queryClient.setQueryData(KEYS.contacts, context.prevContacts);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.pending });
+      queryClient.invalidateQueries({ queryKey: KEYS.contacts });
+    },
+  });
+}
+
+export function useRejectContactRequest() {
+  const { actor } = useActor(createActor);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (from: string) => {
+      if (!actor) throw new Error("Actor not available");
+      return await actor.rejectContactRequest(Principal.fromText(from));
+    },
+    onMutate: async (from: string) => {
+      await queryClient.cancelQueries({ queryKey: KEYS.pending });
+      const prevPending = queryClient.getQueryData<ContactEntry[]>(KEYS.pending);
+      if (prevPending) {
+        queryClient.setQueryData<ContactEntry[]>(
+          KEYS.pending,
+          prevPending.filter(([uid]) => uid.toString() !== from),
+        );
+      }
+      return { prevPending };
+    },
+    onError: (_error, _from, context) => {
+      if (context?.prevPending !== undefined) {
+        queryClient.setQueryData(KEYS.pending, context.prevPending);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.pending });
+    },
+  });
+}
+
+export function useFindUserByUsername() {
+  const { actor } = useActor(createActor);
+  return useMutation({
+    mutationFn: async (username: string) => {
+      if (!actor) throw new Error("Actor not available");
+      const result = await actor.findUserByUsername(username);
+      if (!result) return null;
+      const [profile, principal] = result;
+      return { profile, principal: principal.toString() };
+    },
+  });
+}
+
+export function useGetUserByPrincipal() {
+  const { actor } = useActor(createActor);
+  return useMutation({
+    mutationFn: async (principalStr: string) => {
+      if (!actor) throw new Error("Actor not available");
+      return await actor.getUserByPrincipal(Principal.fromText(principalStr));
+    },
+  });
+}
+
+export function useSendSnap() {
+  const { actor } = useActor(createActor);
+  return useMutation({
+    mutationFn: async ({
+      receiver,
+      bytes,
+    }: {
+      receiver: string;
+      bytes: Uint8Array;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      const blob = ExternalBlob.fromBytes(bytes as Uint8Array<ArrayBuffer>);
+      return await actor.sendSnap(Principal.fromText(receiver), blob);
+    },
+  });
+}
+
+export function useOpenSnap() {
+  const { actor } = useActor(createActor);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (snapId: string) => {
+      if (!actor) throw new Error("Actor not available");
+      return await actor.openSnap(snapId);
+    },
+    onMutate: async (snapId: string) => {
+      await queryClient.cancelQueries({ queryKey: KEYS.unopenedSnaps });
+      const previous = queryClient.getQueryData<Snap[]>(KEYS.unopenedSnaps);
+      if (previous) {
+        queryClient.setQueryData<Snap[]>(
+          KEYS.unopenedSnaps,
+          previous.filter((snap) => snap.id !== snapId),
+        );
+      }
+      return { previous };
+    },
+    onError: (_error, _snapId, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(KEYS.unopenedSnaps, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.unopenedSnaps });
+    },
   });
 }
 
 export function useSendMessage() {
-  const { actor } = useActor();
+  const { actor } = useActor(createActor);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -110,170 +301,78 @@ export function useSendMessage() {
       isSnapEvent: boolean;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      const principal = Principal.fromText(receiver);
-      return actor.sendMessage(principal, content, isSnapEvent);
+      return await actor.sendMessage(
+        Principal.fromText(receiver),
+        content,
+        isSnapEvent,
+      );
     },
-    onSuccess: (_, vars) => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["conversation", vars.receiver],
+        queryKey: KEYS.conversation(variables.receiver),
       });
-    },
-  });
-}
-
-export function useSendContactRequest() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (principalStr: string) => {
-      if (!actor) throw new Error("Actor not available");
-      const principal = Principal.fromText(principalStr);
-      await actor.sendContactRequest(principal);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
-    },
-  });
-}
-
-export function useAcceptContactRequest() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (principalStr: string) => {
-      if (!actor) throw new Error("Actor not available");
-      const principal = Principal.fromText(principalStr);
-      await actor.acceptContactRequest(principal);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["pendingRequests"] });
-    },
-  });
-}
-
-export function useRejectContactRequest() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (principalStr: string) => {
-      if (!actor) throw new Error("Actor not available");
-      const principal = Principal.fromText(principalStr);
-      await actor.rejectContactRequest(principal);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pendingRequests"] });
     },
   });
 }
 
 export function useUpdateRetention() {
-  const { actor } = useActor();
+  const { actor } = useActor(createActor);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (policy: RetentionPolicy) => {
       if (!actor) throw new Error("Actor not available");
-      await actor.updateRetention(policy);
+      return await actor.updateRetention(policy);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
-    },
-  });
-}
-
-export function useGetUserByUsername() {
-  const { actor } = useActor();
-  return useMutation({
-    mutationFn: async (username: string) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.getUserByUsername(username);
-    },
-  });
-}
-
-export function useFindUserByUsername() {
-  const { actor } = useActor();
-  return useMutation({
-    mutationFn: async (
-      username: string,
-    ): Promise<{ profile: UserProfile; principal: string } | null> => {
-      if (!actor) throw new Error("Actor not available");
-      const result = await actor.findUserByUsername(username);
-      if (!result) return null;
-      const [profile, principal] = result;
-      return {
-        profile,
-        principal: principal.toString(),
-      };
-    },
-  });
-}
-
-export function useGetUserByPrincipal() {
-  const { actor } = useActor();
-  return useMutation({
-    mutationFn: async (principalStr: string) => {
-      if (!actor) throw new Error("Actor not available");
-      const principal = Principal.fromText(principalStr);
-      return actor.getUserByPrincipal(principal);
-    },
-  });
-}
-
-export function useOpenSnap() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (snapId: string) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.openSnap(snapId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["unopenedSnaps"] });
-    },
-  });
-}
-
-export function useSendSnap() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      receiver,
-      bytes,
-    }: {
-      receiver: string;
-      bytes: Uint8Array;
-    }) => {
-      if (!actor) throw new Error("Actor not available");
-      const { ExternalBlob } = await import("../backend");
-      const blob = ExternalBlob.fromBytes(
-        bytes as unknown as Uint8Array<ArrayBuffer>,
+    onMutate: async (policy: RetentionPolicy) => {
+      await queryClient.cancelQueries({ queryKey: KEYS.callerProfile });
+      const previous = queryClient.getQueryData<UserProfile | null>(
+        KEYS.callerProfile,
       );
-      const principal = Principal.fromText(receiver);
-      const snapId = await actor.sendSnap(principal, blob);
-      await actor.sendMessage(principal, "📸 Snap", true);
-      return snapId;
+      if (previous) {
+        queryClient.setQueryData<UserProfile | null>(KEYS.callerProfile, {
+          ...previous,
+          retention: policy,
+        });
+      }
+      return { previous };
     },
-    onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({
-        queryKey: ["conversation", vars.receiver],
-      });
-      queryClient.invalidateQueries({ queryKey: ["unopenedSnaps"] });
+    onError: (_error, _policy, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(KEYS.callerProfile, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.callerProfile });
     },
   });
 }
 
 export function useSaveProfile() {
-  const { actor } = useActor();
+  const { actor } = useActor(createActor);
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (profile: UserProfile) => {
+    mutationFn: async (profile: {
+      username: string;
+      retention: RetentionPolicy;
+    }) => {
       if (!actor) throw new Error("Actor not available");
-      await actor.saveCallerUserProfile(profile);
+      return await actor.saveCallerUserProfile(profile);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
+    onMutate: async (profile) => {
+      await queryClient.cancelQueries({ queryKey: KEYS.callerProfile });
+      const previous = queryClient.getQueryData<UserProfile | null>(
+        KEYS.callerProfile,
+      );
+      queryClient.setQueryData<UserProfile | null>(KEYS.callerProfile, profile);
+      return { previous };
+    },
+    onError: (_error, _profile, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(KEYS.callerProfile, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.callerProfile });
     },
   });
 }

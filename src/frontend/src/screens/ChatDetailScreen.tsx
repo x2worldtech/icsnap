@@ -1,14 +1,14 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
+import { useActor, useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { Principal } from "@icp-sdk/core/principal";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Camera, Send } from "lucide-react";
+import { ArrowLeft, Camera, MessageCircle, Send } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Message, UserProfile } from "../backend.d";
-import { useActor } from "../hooks/useActor";
-import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import { createActor } from "../backend";
+import type { Message, UserProfile } from "../backend";
 import {
   useConversationHistory,
   useListUnopenedSnaps,
@@ -34,7 +34,7 @@ export default function ChatDetailScreen({
   onBack,
 }: ChatDetailScreenProps) {
   const { identity } = useInternetIdentity();
-  const { actor } = useActor();
+  const { actor } = useActor(createActor);
   const myPrincipal = identity?.getPrincipal().toString();
 
   const [text, setText] = useState("");
@@ -87,7 +87,7 @@ export default function ChatDetailScreen({
       });
       setOptimistic((prev) => prev.filter((m) => m.id !== tempId));
     } catch {
-      toast.error("Nachricht konnte nicht gesendet werden");
+      toast.error("Couldn't send message");
       setOptimistic((prev) => prev.filter((m) => m.id !== tempId));
     }
   };
@@ -102,7 +102,7 @@ export default function ChatDetailScreen({
         queryKey: ["conversation", contactPrincipal],
       });
     } catch {
-      toast.error("Snap konnte nicht geöffnet werden");
+      toast.error("Couldn't open snap");
     } finally {
       setOpeningSnapId(null);
     }
@@ -144,11 +144,13 @@ export default function ChatDetailScreen({
         {messages.length === 0 && optimistic.length === 0 && (
           <div
             data-ocid="chat.empty_state"
-            className="flex flex-col items-center justify-center flex-1 gap-2"
+            className="flex flex-col items-center justify-center flex-1 gap-4 px-8 text-center"
           >
-            <span className="text-4xl">👋</span>
-            <p className="text-muted-foreground text-sm text-center">
-              Schreib etwas oder schicke einen Snap!
+            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground text-sm">
+              No messages yet. Say hello or send a snap.
             </p>
           </div>
         )}
@@ -191,7 +193,7 @@ export default function ChatDetailScreen({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          placeholder="Nachricht..."
+          placeholder="Message…"
           className="flex-1 rounded-full bg-card border-border text-foreground placeholder:text-muted-foreground"
         />
         <button
@@ -200,7 +202,7 @@ export default function ChatDetailScreen({
           onClick={handleSend}
           disabled={!text.trim()}
           className="w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-40 transition-opacity"
-          style={{ background: "oklch(0.55 0.22 293)" }}
+          style={{ background: "oklch(var(--primary))" }}
         >
           <Send className="w-4 h-4 text-white" />
         </button>
@@ -222,7 +224,7 @@ export default function ChatDetailScreen({
               className="max-w-full max-h-full object-contain"
             />
             <p className="absolute bottom-10 text-white/70 text-sm">
-              Tippen zum Schließen
+              Tap to close
             </p>
           </motion.div>
         )}
@@ -267,29 +269,29 @@ function MessageBubble({
           >
             <Camera
               className="w-5 h-5"
-              style={{ color: "oklch(0.55 0.22 293)" }}
+              style={{ color: "oklch(var(--primary))" }}
             />
             <div className="text-left">
               <p
                 className="text-sm font-semibold"
-                style={{ color: "oklch(0.55 0.22 293)" }}
+                style={{ color: "oklch(var(--primary))" }}
               >
-                {openingSnapId === snapId ? "Öffne..." : "Snap öffnen"}
+                {openingSnapId === snapId ? "Opening…" : "Open Snap"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Nur einmal sichtbar
+                Viewable once
               </p>
             </div>
             <div
               className="w-2 h-2 rounded-full"
-              style={{ background: "oklch(0.75 0.18 75)" }}
+              style={{ background: "oklch(var(--accent))" }}
             />
           </button>
         ) : (
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-card border border-border max-w-[72%]">
             <Camera className="w-4 h-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
-              {isMine ? "Snap gesendet" : "Snap geöffnet"}
+              {isMine ? "Snap sent" : "Snap opened"}
             </span>
           </div>
         )}

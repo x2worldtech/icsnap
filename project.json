@@ -1,0 +1,21 @@
+{
+  "overview": "ICSnap is a Snapchat-like app for the Internet Computer with camera-first UX, single-view snaps, chat, and a snap editor with text and drawing tools.",
+  "features": [
+    "Send photos as snaps that can only be viewed once",
+    "Snap editor with text overlays: customizable font, color, size, pinch-to-scale, rotation with snap assist",
+    "Snap editor with freehand drawing: multiple colors and stroke widths",
+    "Chat list shows new message indicator (purple icon) and snap indicator (yellow)",
+    "Find contacts by username or Principal ID",
+    "Internet Identity login"
+  ],
+  "category": "social-app",
+  "tags": [
+    "snapchat",
+    "camera",
+    "chat",
+    "privacy",
+    "icp",
+    "mobile"
+  ],
+  "last_updated": "2026-05-26T07:11:55.214Z"
+}

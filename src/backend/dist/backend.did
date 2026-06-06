@@ -1,0 +1,104 @@
+type _ImmutableObjectStorageRefillResult = 
+ record {
+   success: opt bool;
+   topped_up_amount: opt nat;
+ };
+type _ImmutableObjectStorageRefillInformation = record {
+                                                  proposed_top_up_amount:
+                                                   opt nat;};
+type _ImmutableObjectStorageCreateCertificateResult = 
+ record {
+   blob_hash: text;
+   method: text;
+ };
+type UserRole = 
+ variant {
+   admin;
+   guest;
+   user;
+ };
+type UserProfile = 
+ record {
+   retention: RetentionPolicy;
+   username: text;
+ };
+type UserId = principal;
+type Time = int;
+type Snap = 
+ record {
+   blobId: ExternalBlob;
+   id: text;
+   opened: bool;
+   receiver: UserId;
+   sender: UserId;
+   timestamp: Time;
+ };
+type RetentionPolicy = 
+ variant {
+   deleteAfter24h;
+   forever;
+ };
+type Message = 
+ record {
+   content: text;
+   id: nat;
+   isSnapEvent: bool;
+   receiver: UserId;
+   sender: UserId;
+   snapId: opt text;
+   timestamp: Time;
+ };
+type ExternalBlob = blob;
+type ContactRequest = 
+ record {
+   from: UserId;
+   status: variant {
+             accepted;
+             pending;
+             rejected;
+           };
+   to: UserId;
+ };
+service : {
+  _immutableObjectStorageBlobsAreLive: (hashes: vec blob) -> (vec bool) query;
+  _immutableObjectStorageBlobsToDelete: () -> (vec blob) query;
+  _immutableObjectStorageConfirmBlobDeletion: (blobs: vec blob) -> ();
+  _immutableObjectStorageCreateCertificate: (blobHash: text) ->
+   (_ImmutableObjectStorageCreateCertificateResult);
+  _immutableObjectStorageRefillCashier: (refillInformation:
+   opt _ImmutableObjectStorageRefillInformation) ->
+   (_ImmutableObjectStorageRefillResult);
+  _immutableObjectStorageUpdateGatewayPrincipals: () -> ();
+  _initializeAccessControl: () -> ();
+  acceptContactRequest: (from: UserId) -> ();
+  assignCallerUserRole: (user: principal, role: UserRole) -> ();
+  findUserByUsername: (username: text) ->
+   (opt record {
+          UserProfile;
+          UserId;
+        }) query;
+  getCallerUserProfile: () -> (opt UserProfile) query;
+  getCallerUserRole: () -> (UserRole) query;
+  getConversationHistory: (otherUser: UserId) -> (vec Message) query;
+  getUserByPrincipal: (id: UserId) -> (UserProfile) query;
+  getUserByUsername: (username: text) -> (UserProfile) query;
+  getUserProfile: (user: principal) -> (opt UserProfile) query;
+  isCallerAdmin: () -> (bool) query;
+  listContacts: () -> (vec record {
+                             UserId;
+                             ContactRequest;
+                           }) query;
+  listPendingRequests: () -> (vec record {
+                                    UserId;
+                                    ContactRequest;
+                                  }) query;
+  listUnopenedSnaps: () -> (vec Snap) query;
+  openSnap: (snapId: text) -> (ExternalBlob);
+  register: (username: text) -> ();
+  rejectContactRequest: (from: UserId) -> ();
+  saveCallerUserProfile: (profile: UserProfile) -> ();
+  sendContactRequest: (to: UserId) -> ();
+  sendMessage: (receiver: UserId, content: text, isSnapEvent: bool) -> (nat);
+  sendSnap: (receiver: UserId, blobId: ExternalBlob) -> (text);
+  updateRetention: (policy: RetentionPolicy) -> ();
+}

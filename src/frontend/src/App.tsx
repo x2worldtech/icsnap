@@ -1,10 +1,10 @@
 import { Toaster } from "@/components/ui/sonner";
+import { useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import BottomNav from "./components/BottomNav";
 import RegisterModal from "./components/RegisterModal";
-import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import { useGetCallerUserProfile, useOpenSnap } from "./hooks/useQueries";
 import AuthScreen from "./screens/AuthScreen";
 import CameraScreen from "./screens/CameraScreen";
@@ -14,6 +14,9 @@ import ContactsScreen from "./screens/ContactsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 
 export type MainScreen = "camera" | "chats" | "contacts" | "profile";
+
+// Left-to-right order of the swipeable pages (matches the bottom nav order).
+const SCREEN_ORDER: MainScreen[] = ["chats", "camera", "contacts", "profile"];
 
 export default function App() {
   const { identity } = useInternetIdentity();
@@ -37,6 +40,36 @@ export default function App() {
     !profileLoading &&
     userProfile === null;
 
+  const activeIndex = SCREEN_ORDER.indexOf(activeScreen);
+
+  // ── Swipe-to-switch-tabs (Snapchat-style) ──────────────────────────────────
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    // Ignore gestures that start inside opted-out surfaces (e.g. the snap editor)
+    if ((e.target as HTMLElement).closest("[data-noswipe]")) {
+      touchStart.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.current.x;
+    const dy = t.clientY - touchStart.current.y;
+    touchStart.current = null;
+    // Require a clearly horizontal swipe so vertical scrolling still works.
+    if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    if (dx < 0 && activeIndex < SCREEN_ORDER.length - 1) {
+      setActiveScreen(SCREEN_ORDER[activeIndex + 1]);
+    } else if (dx > 0 && activeIndex > 0) {
+      setActiveScreen(SCREEN_ORDER[activeIndex - 1]);
+    }
+  };
+
   const handleOpenChat = (principalStr: string) => {
     setChatContact(principalStr);
   };
@@ -52,7 +85,7 @@ export default function App() {
       const url = blob.getDirectURL();
       setDirectSnapUrl(url);
     } catch {
-      toast.error("Snap konnte nicht ge\u00F6ffnet werden");
+      toast.error("Couldn't open snap");
     } finally {
       setLoadingSnap(false);
     }
@@ -77,32 +110,37 @@ export default function App() {
               onBack={handleCloseChat}
             />
           ) : (
-            <>
-              <div className={activeScreen === "camera" ? "h-full" : "hidden"}>
-                <CameraScreen
-                  activeScreen={activeScreen}
-                  setActiveScreen={setActiveScreen}
-                />
-              </div>
-              <div className={activeScreen === "chats" ? "h-full" : "hidden"}>
-                <ChatsScreen
-                  onOpenChat={handleOpenChat}
-                  onOpenSnap={handleOpenSnap}
-                />
-              </div>
+            <div
+              className="h-full overflow-hidden"
+              onTouchStart={onTouchStart}
+              onTouchEnd={onTouchEnd}
+            >
               <div
-                className={activeScreen === "contacts" ? "h-full" : "hidden"}
+                className="flex h-full w-full transition-transform duration-300 ease-out"
+                style={{ transform: `translateX(-${activeIndex * 100}%)` }}
               >
-                <ContactsScreen onOpenChat={handleOpenChat} />
+                <div className="h-full shrink-0 basis-full">
+                  <ChatsScreen
+                    onOpenChat={handleOpenChat}
+                    onOpenSnap={handleOpenSnap}
+                    onNavigate={setActiveScreen}
+                  />
+                </div>
+                <div className="h-full shrink-0 basis-full">
+                  <CameraScreen activeScreen={activeScreen} />
+                </div>
+                <div className="h-full shrink-0 basis-full">
+                  <ContactsScreen onOpenChat={handleOpenChat} />
+                </div>
+                <div className="h-full shrink-0 basis-full">
+                  <ProfileScreen />
+                </div>
               </div>
-              <div className={activeScreen === "profile" ? "h-full" : "hidden"}>
-                <ProfileScreen />
-              </div>
-            </>
+            </div>
           )}
         </div>
 
-        {activeScreen !== "camera" && !chatContact && (
+        {!chatContact && (
           <BottomNav active={activeScreen} onChange={setActiveScreen} />
         )}
       </div>
@@ -122,9 +160,9 @@ export default function App() {
             <div className="flex flex-col items-center gap-3">
               <div
                 className="w-12 h-12 rounded-full border-4 border-transparent border-t-current animate-spin"
-                style={{ color: "oklch(0.55 0.22 293)" }}
+                style={{ color: "oklch(var(--primary))" }}
               />
-              <p className="text-white text-sm">Snap wird ge\u00F6ffnet...</p>
+              <p className="text-white text-sm">Opening snap…</p>
             </div>
           </motion.div>
         )}
@@ -146,7 +184,7 @@ export default function App() {
               className="w-full h-full object-contain"
             />
             <p className="absolute bottom-10 text-white/70 text-sm">
-              Tippen zum Schlie\u00DFen
+              Tap to close
             </p>
           </motion.div>
         )}

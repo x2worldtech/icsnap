@@ -1,21 +1,18 @@
 import { Button } from "@/components/ui/button";
-import { FlipHorizontal, Send, X } from "lucide-react";
+import { FlipHorizontal } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { MainScreen } from "../App";
 import { useCamera } from "../camera/useCamera";
-import BottomNav from "../components/BottomNav";
+import ErrorBoundary from "../components/ErrorBoundary";
 import SendSnapSheet from "../components/SendSnapSheet";
+import SnapEditor from "../components/SnapEditor";
 
 interface CameraScreenProps {
   activeScreen: MainScreen;
-  setActiveScreen: (s: MainScreen) => void;
 }
 
-export default function CameraScreen({
-  activeScreen,
-  setActiveScreen,
-}: CameraScreenProps) {
+export default function CameraScreen({ activeScreen }: CameraScreenProps) {
   const {
     isActive,
     isLoading,
@@ -36,6 +33,8 @@ export default function CameraScreen({
     url: string;
     bytes: Uint8Array;
   } | null>(null);
+  // annotated bytes from SnapEditor (replaces raw bytes for send)
+  const [annotatedBytes, setAnnotatedBytes] = useState<Uint8Array | null>(null);
   const [showSendSheet, setShowSendSheet] = useState(false);
   const started = useRef(false);
 
@@ -58,11 +57,19 @@ export default function CameraScreen({
   const handleDiscard = () => {
     if (preview) URL.revokeObjectURL(preview.url);
     setPreview(null);
+    setAnnotatedBytes(null);
+  };
+
+  const handleEditorSend = async (blob: Blob) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    setAnnotatedBytes(new Uint8Array(arrayBuffer));
+    setShowSendSheet(true);
   };
 
   const handleSendDone = () => {
     if (preview) URL.revokeObjectURL(preview.url);
     setPreview(null);
+    setAnnotatedBytes(null);
     setShowSendSheet(false);
   };
 
@@ -119,15 +126,15 @@ export default function CameraScreen({
                 className="text-white text-center px-6"
               >
                 {error.type === "permission"
-                  ? "Kamera-Zugriff verweigert. Bitte erlaube den Zugriff in den Browser-Einstellungen."
+                  ? "Camera access denied. Please allow access in your browser settings."
                   : error.message}
               </p>
               <Button
                 onClick={() => startCamera()}
                 className="rounded-full"
-                style={{ background: "oklch(0.55 0.22 293)" }}
+                style={{ background: "oklch(var(--primary))" }}
               >
-                Erneut versuchen
+                Try again
               </Button>
             </>
           ) : (
@@ -136,90 +143,55 @@ export default function CameraScreen({
               className="flex flex-col items-center gap-3"
             >
               <div className="w-8 h-8 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-              <p className="text-white/70 text-sm">Kamera wird gestartet...</p>
+              <p className="text-white/70 text-sm">Starting camera…</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Bottom controls */}
+      {/* Shutter */}
       <AnimatePresence>
         {!preview && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="absolute bottom-0 left-0 right-0"
+            className="absolute bottom-8 left-0 right-0 flex items-center justify-center"
           >
-            {/* Bottom nav */}
-            <div className="pb-4">
-              <BottomNav
-                active={activeScreen}
-                onChange={setActiveScreen}
-                onCamera={() => {}}
-              />
-            </div>
-
-            {/* Shutter area above nav */}
-            <div className="absolute bottom-24 left-0 right-0 flex items-center justify-center">
-              <button
-                type="button"
-                data-ocid="camera.primary_button"
-                onClick={handleCapture}
-                disabled={!isActive || isLoading}
-                className="w-20 h-20 rounded-full flex items-center justify-center transition-transform active:scale-95 amber-glow"
-                style={{
-                  background: "oklch(0.75 0.18 75)",
-                  border: "4px solid rgba(255,255,255,0.8)",
-                  boxShadow:
-                    "0 0 0 2px oklch(0.75 0.18 75 / 0.4), 0 8px 32px rgba(0,0,0,0.4)",
-                }}
-              />
-            </div>
+            <button
+              type="button"
+              data-ocid="camera.primary_button"
+              onClick={handleCapture}
+              disabled={!isActive || isLoading}
+              className="w-[4.75rem] h-[4.75rem] rounded-full flex items-center justify-center transition-transform active:scale-95 snap-glow"
+              style={{
+                background: "oklch(var(--accent))",
+                border: "4px solid rgba(255,255,255,0.9)",
+                boxShadow:
+                  "0 0 0 2px oklch(var(--accent) / 0.4), 0 8px 32px rgba(0,0,0,0.4)",
+              }}
+            />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Preview overlay */}
+      {/* Snap Editor overlay */}
       <AnimatePresence>
         {preview && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black"
+            className="absolute inset-0"
+            data-noswipe="true"
           >
-            <img
-              src={preview.url}
-              alt="Snap preview"
-              className="w-full h-full object-cover"
-            />
-
-            {/* Preview controls */}
-            <div className="absolute bottom-0 left-0 right-0 p-6 flex items-center justify-between">
-              <button
-                type="button"
-                data-ocid="camera.cancel_button"
-                onClick={handleDiscard}
-                className="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm"
-              >
-                <X className="w-6 h-6 text-white" />
-              </button>
-
-              <button
-                type="button"
-                data-ocid="camera.primary_button"
-                onClick={() => setShowSendSheet(true)}
-                className="flex items-center gap-2 px-6 py-4 rounded-full font-semibold text-white"
-                style={{
-                  background:
-                    "linear-gradient(135deg, oklch(0.55 0.22 293), oklch(0.48 0.2 280))",
-                }}
-              >
-                <Send className="w-5 h-5" />
-                Senden
-              </button>
-            </div>
+            <ErrorBoundary onReset={handleDiscard}>
+              <SnapEditor
+                capturedImage={preview.url}
+                onSend={handleEditorSend}
+                onDiscard={handleDiscard}
+              />
+            </ErrorBoundary>
           </motion.div>
         )}
       </AnimatePresence>
@@ -229,7 +201,7 @@ export default function CameraScreen({
         <SendSnapSheet
           open={showSendSheet}
           onClose={() => setShowSendSheet(false)}
-          snapBytes={preview.bytes}
+          snapBytes={annotatedBytes ?? preview.bytes}
           onSent={handleSendDone}
         />
       )}

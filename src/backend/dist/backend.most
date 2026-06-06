@@ -1,0 +1,97 @@
+// Version: 1.0.0
+type ContactRequest__876110523 =
+  {
+    from : UserId__313180070;
+    status : {#accepted; #pending; #rejected};
+    to : UserId__313180070
+  };
+type Data__791452850<K, V> =
+  {var count : Nat__490723111; kvs : [var ?(K, V)]};
+type ExternalBlob__671167343 = Blob;
+type Int__270357528 = Int__616954475;
+type Int__616954475 = Int;
+type Internal__8484328<K, V> =
+  {children : [var ?Node__46230540<K, V>]; data : Data__791452850<K, V>};
+type Leaf__809889148<K, V> = {data : Data__791452850<K, V>};
+type List__415060402<T> = List__790383201<T>;
+type List__790383201<T> =
+  {
+    var blockIndex : Nat__490723111;
+    var blocks : [var [var ?T]];
+    var elementIndex : Nat__490723111
+  };
+type Map__158565046<K, V> = Map__297112838<K, V>;
+type Map__297112838<K, V> =
+  {var root : Node__46230540<K, V>; var size : Nat__490723111};
+type Map__605269027<K, V> = Map__158565046<K, V>;
+type Message__19119041 =
+  {
+    content : Text;
+    id : Nat;
+    isSnapEvent : Bool;
+    receiver : UserId__313180070;
+    sender : UserId__313180070;
+    snapId : ?Text;
+    timestamp : Time__900049286
+  };
+type Nat__490723111 = Nat__920180692;
+type Nat__920180692 = Nat;
+type Node__46230540<K, V> =
+  {#internal : Internal__8484328<K, V>; #leaf : Leaf__809889148<K, V>};
+type RetentionPolicy__323140706 = {#deleteAfter24h; #forever};
+type Snap__438409399 =
+  {
+    blobId : ExternalBlob__671167343;
+    id : Text;
+    opened : Bool;
+    receiver : UserId__313180070;
+    sender : UserId__313180070;
+    timestamp : Time__900049286
+  };
+type Time__796480547 = Int__270357528;
+type Time__900049286 = Time__796480547;
+type UserId__313180070 = Principal;
+type UserProfile__491224006 =
+  {retention : RetentionPolicy__323140706; username : Text};
+type UserRole__1073662873 = {#admin; #guest; #user};
+actor {
+  stable accessControlState :
+    {
+      var adminAssigned : Bool;
+      userRoles : Map__605269027<Principal, UserRole__1073662873>
+    };
+  stable contactRequests :
+    {
+      var root :
+        Node__46230540<UserId__313180070,
+                        List__415060402<ContactRequest__876110523>>;
+      var size : Nat__490723111
+    };
+  stable messages :
+    {
+      var root :
+        Node__46230540<UserId__313180070, List__415060402<Message__19119041>>;
+      var size : Nat__490723111
+    };
+  stable var nextMessageId : Nat;
+  stable snaps :
+    {
+      var root : Node__46230540<Text, Snap__438409399>;
+      var size : Nat__490723111
+    };
+  stable unopenedSnapsByReceiver :
+    {
+      var root : Node__46230540<UserId__313180070, List__415060402<Text>>;
+      var size : Nat__490723111
+    };
+  stable userProfiles :
+    {
+      var root : Node__46230540<UserId__313180070, UserProfile__491224006>;
+      var size : Nat__490723111
+    };
+  stable usernameMap :
+    {
+      var root : Node__46230540<Text, UserId__313180070>;
+      var size : Nat__490723111
+    }
+};

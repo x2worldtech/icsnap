@@ -2,15 +2,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useActor } from "@caffeineai/core-infrastructure";
 import { Principal } from "@icp-sdk/core/principal";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Search, UserPlus, X } from "lucide-react";
+import { Check, Search, UserPlus, Users, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { UserProfile } from "../backend.d";
-import { Variant_pending_rejected_accepted } from "../backend.d";
-import { useActor } from "../hooks/useActor";
+import { createActor } from "../backend";
+import type { UserProfile } from "../backend";
+import { Variant_pending_rejected_accepted } from "../backend";
 import {
   useAcceptContactRequest,
   useFindUserByUsername,
@@ -40,7 +41,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
   const rejectRequest = useRejectContactRequest();
   const findUserByUsername = useFindUserByUsername();
   const getUserByPrincipal = useGetUserByPrincipal();
-  const { actor } = useActor();
+  const { actor } = useActor(createActor);
 
   // Load usernames for pending requests
   const pendingPrincipals = (pending ?? []).map(([uid]) => uid.toString());
@@ -112,10 +113,10 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
             profile = result.profile;
             principalStr = result.principal;
           } else {
-            toast.error("Nutzer nicht gefunden");
+            toast.error("User not found");
           }
         } catch {
-          toast.error("Nutzer nicht gefunden");
+          toast.error("User not found");
         }
       }
       if (profile && principalStr)
@@ -128,18 +129,20 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
   const handleAddContact = async (principalStr: string) => {
     try {
       await sendRequest.mutateAsync(principalStr);
-      toast.success("Kontaktanfrage gesendet");
+      toast.success("Contact request sent");
       setSearchResult(null);
       setQuery("");
     } catch {
-      toast.error("Anfrage konnte nicht gesendet werden");
+      toast.error("Couldn't send request");
     }
   };
 
   return (
     <div className="h-full flex flex-col bg-background">
       <header className="px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-bold text-foreground">Kontakte</h1>
+        <h1 className="text-[1.75rem] font-extrabold tracking-tight text-foreground">
+          Contacts
+        </h1>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24 flex flex-col gap-4">
@@ -150,7 +153,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder="Principal ID oder Nutzername..."
+            placeholder="Principal ID or username…"
             className="flex-1 bg-card border-border rounded-xl text-foreground placeholder:text-muted-foreground"
           />
           <Button
@@ -158,7 +161,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
             onClick={handleSearch}
             disabled={searching || !query.trim()}
             className="rounded-xl px-4"
-            style={{ background: "oklch(0.55 0.22 293)" }}
+            style={{ background: "oklch(var(--primary))" }}
           >
             <Search className="w-4 h-4" />
           </Button>
@@ -190,7 +193,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
               onClick={() => handleAddContact(searchResult.principal)}
               disabled={sendRequest.isPending}
               className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ background: "oklch(0.55 0.22 293)" }}
+              style={{ background: "oklch(var(--primary))" }}
             >
               <UserPlus className="w-4 h-4 text-white" />
             </button>
@@ -201,7 +204,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
         {(pending ?? []).length > 0 && (
           <div>
             <h2 className="text-sm font-semibold text-muted-foreground mb-2 px-1">
-              Anfragen
+              Requests
             </h2>
             <div className="flex flex-col gap-1">
               {(pending ?? []).map(([uid], idx) => {
@@ -225,7 +228,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
                         {username}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Möchte dich als Kontakt
+                        Wants to connect
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -235,11 +238,11 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
                         onClick={() =>
                           acceptRequest
                             .mutateAsync(principalStr)
-                            .then(() => toast.success("Kontakt hinzugefügt"))
-                            .catch(() => toast.error("Fehler"))
+                            .then(() => toast.success("Contact added"))
+                            .catch(() => toast.error("Something went wrong"))
                         }
                         className="w-8 h-8 rounded-full flex items-center justify-center"
-                        style={{ background: "oklch(0.55 0.22 293)" }}
+                        style={{ background: "oklch(var(--primary))" }}
                       >
                         <Check className="w-4 h-4 text-white" />
                       </button>
@@ -249,8 +252,8 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
                         onClick={() =>
                           rejectRequest
                             .mutateAsync(principalStr)
-                            .then(() => toast.success("Anfrage abgelehnt"))
-                            .catch(() => toast.error("Fehler"))
+                            .then(() => toast.success("Request declined"))
+                            .catch(() => toast.error("Something went wrong"))
                         }
                         className="w-8 h-8 rounded-full flex items-center justify-center bg-muted"
                       >
@@ -267,7 +270,7 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
         {/* Contacts list */}
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground mb-2 px-1">
-            Meine Kontakte
+            My Contacts
           </h2>
           {isLoading ? (
             <div
@@ -284,13 +287,13 @@ export default function ContactsScreen({ onOpenChat }: ContactsScreenProps) {
           ) : acceptedContacts.length === 0 ? (
             <div
               data-ocid="contacts.empty_state"
-              className="flex flex-col items-center justify-center py-8 gap-2"
+              className="flex flex-col items-center justify-center py-12 gap-4 text-center"
             >
-              <span className="text-3xl">👥</span>
-              <p className="text-sm text-muted-foreground text-center">
-                Noch keine Kontakte.
-                <br />
-                Suche nach Nutzern oben.
+              <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center">
+                <Users className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                No contacts yet. Search above to add people.
               </p>
             </div>
           ) : (
